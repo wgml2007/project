@@ -1,0 +1,110 @@
+---
+title: "Machine learning project"
+author: "PENG"
+date: "February 14, 2016"
+output: html_document
+---
+
+#summary
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. 
+
+#Data preprocessing
+###data description
+This data set was created by measuring several individuals performing a weight lifting exercise, in one of several ways: correctly, and while making one of several common mistakes. Various physical measurements of their movement were made recording position, momentum, orientation, of several body parts. The goal was to be able to detect whether the exercise is performed correctly, or detect a specific mistake, based on these physical measurements.
+
+After browsing the training dataset"pml-training.csv" and testing dataset "pml-testing", we learn that there are several types of variables in the datasets and there exists many missing values in both the datasets.
+
+There are three categorical variables in the datasets. 
+The outcome variable classe have five levels: A, B, C, D, and E. 
+The variable user_name  specifies who performed the exercise. 
+The variable new_window describe whether a particular time slice is part of a new moving window.
+
+Besides,  the variable cvtd_timestamp is the date varible.
+
+#Data preprocessing
+###Import dataset:
+
+```{r}
+library(caret)
+library(dplyr)
+library(randomForest)
+setwd("~/Desktop/courseraR/machine learning/project")
+training <- read.csv("pml-training.csv", na.strings=c("NA","","#DIV/0!"));
+testing <- read.csv("pml-testing.csv", na.strings=c("NA","","#DIV/0!"));
+```
+
+###Prepare training and test sets
+Split the "training"" into a training set (for model training) and a test set (for cross validation), splitting on the classe variable (this is the variable of interest) with a 60-40 split.
+
+### Taking 60% for the training data and 40% for the test data
+```{r}
+inTrain <- createDataPartition(y = training$classe, list = FALSE, p=0.6)
+trainData <- training[inTrain,]
+testData <- training[-inTrain,]
+```
+###data cleaning
+We need to remove the variables with mostly na values and the variables who don't contribute for the classification. 
+
+```{r}
+naprops <- colSums(is.na(trainData))/nrow(trainData)
+mostlyNAs <- names(naprops[naprops > 0.90]) # mostly being 90%
+mostlyNACols <- which(naprops > 0.90) # there's about 100 of them
+```
+
+Take a small sample of the training data to work with.
+```{r}
+set.seed(1000)
+smalltrain <- trainData %>% tbl_df %>% sample_n(size=1000)
+smalltrain <- smalltrain[,-mostlyNACols]
+```
+
+###remove nonsignificanr varibles: X, user_name, raw_timestamp_part_1, raw_timestamp_part_2	cvtd_timestamp, new_window, num_window.
+```{r}
+smalltrain <- smalltrain[,-(1:7)]; 
+```
+
+###Remove candidate predictors that have near zero variance
+smalltrain <- smalltrain[,-nearZeroVar(smalltrain)]
+
+###List of candidate predictors
+```{r}
+modelVars <- names(smalltrain)
+modelVars1 <- modelVars[-grep("classe",modelVars)] # remove the classe var
+```
+
+The predictors for the machine learning are
+```{r}
+modelVars1
+```
+
+#Fit the model(Random forests)
+```{r}
+set.seed(57)
+cleanedTrainData <- trainData[,modelVars]
+modelFit <- randomForest(classe ~., data=cleanedTrainData, type="class")
+```
+
+#Mesure the accuracy
+```{r}
+## Get the values predicted by the model
+predTrain <- predict(modelFit,newdata=trainData)
+## Use a confusion matrix to get the insample error
+confusionMatrix(predTrain,trainData$classe)$table
+```
+
+Now getting an out of sample error estimate (from testData - which is 40% of pml-training.csv)
+
+```{r}
+classe_col <- grep("classe",names(testData))
+predTest <- predict(modelFit, newdata = testData[,-classe_col], type="class")
+
+confusionMatrix(predTest,testData$classe)
+```
+
+The model has an out of sample accuracy of: 0.99.
+
+#Prediciting exercise activity using the model
+```{r}
+predplmtest <- predict(modelFit, newdata = testing, type="class")
+print(predplmtest)
+```
